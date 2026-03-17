@@ -18,9 +18,11 @@ class ReActAgent:
         self.tools = { func.__name__: func for func in tools }
         self.model = model
         self.project_directory = project_directory
+        # 使用阿里云百炼 API
+        api_key = ReActAgent.get_api_key()
         self.client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=ReActAgent.get_api_key(),
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=api_key,
         )
 
     def run(self, user_input: str):
@@ -95,9 +97,13 @@ class ReActAgent:
     def get_api_key() -> str:
         """Load the API key from an environment variable."""
         load_dotenv()
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        # 优先使用阿里云百炼 API Key
+        api_key = os.getenv("DASHSCOPE_API_KEY")
         if not api_key:
-            raise ValueError("未找到 OPENROUTER_API_KEY 环境变量，请在 .env 文件中设置。")
+            # 兜底尝试 OpenRouter
+            api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise ValueError("未找到 DASHSCOPE_API_KEY 或 OPENROUTER_API_KEY 环境变量")
         return api_key
 
     def call_model(self, messages):
@@ -207,7 +213,10 @@ def run_terminal_command(command):
     """用于执行终端命令"""
     import subprocess
     run_result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    return "执行成功" if run_result.returncode == 0 else run_result.stderr
+    if run_result.returncode == 0:
+        return run_result.stdout if run_result.stdout else "执行成功（无输出）"
+    else:
+        return f"执行失败：{run_result.stderr}"
 
 @click.command()
 @click.argument('project_directory',
@@ -216,7 +225,8 @@ def main(project_directory):
     project_dir = os.path.abspath(project_directory)
 
     tools = [read_file, write_to_file, run_terminal_command]
-    agent = ReActAgent(tools=tools, model="openai/gpt-4o", project_directory=project_dir)
+    # 使用阿里云百炼的 qwen-plus 模型
+    agent = ReActAgent(tools=tools, model="qwen-plus", project_directory=project_dir)
 
     task = input("请输入任务：")
 
